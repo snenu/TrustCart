@@ -38,6 +38,25 @@ const requiredText = (value: string, label: string): string => {
   return value.trim();
 };
 
+export const trustCartStateFromLedger = (ledger: ReturnType<typeof ContractBindings.ledger>): TrustCartDerivedState => ({
+  manufacturerCount: Number(ledger.nextManufacturerId),
+  sellerCount: Number(ledger.nextSellerId),
+  productCount: Number(ledger.nextProductId),
+  warrantyCount: Number(ledger.nextWarrantyId),
+  manufacturers: Array.from(ledger.manufacturers, ([id, mfr]): ManufacturerView => ({
+    id: Number(id), name: decodeText(mfr.name), brand: decodeText(mfr.brand), mfrHash: bytesToHex(mfr.mfrHash), productCount: Number(mfr.productCount), active: mfr.active,
+  })).sort((a, b) => a.id - b.id),
+  sellers: Array.from(ledger.sellers, ([id, seller]): SellerView => ({
+    id: Number(id), name: decodeText(seller.name), mfrId: Number(seller.mfrId), sellerHash: bytesToHex(seller.sellerHash), authorized: seller.authorized, salesCount: Number(seller.salesCount),
+  })).sort((a, b) => a.id - b.id),
+  products: Array.from(ledger.products, ([id, product]): ProductView => ({
+    id: Number(id), mfrId: Number(product.mfrId), model: decodeText(product.model), category: decodeText(product.category), batch: decodeText(product.batch), warrantyMonths: Number(product.warrantyMonths), productCommitment: bytesToHex(product.productCommitment), ownerHash: bytesToHex(product.ownerHash), pendingOwnerHash: bytesToHex(product.pendingOwnerHash), warrantyId: Number(product.warrantyId), sold: product.sold, ownershipVersion: Number(product.ownershipVersion), transfers: Number(product.transfers), status: product.status,
+  })).sort((a, b) => a.id - b.id),
+  warranties: Array.from(ledger.warranties, ([id, warranty]): WarrantyView => ({
+    id: Number(id), productId: Number(warranty.productId), sellerId: Number(warranty.sellerId), issuedAt: Number(warranty.issuedAt), expiresAt: Number(warranty.expiresAt), cancelled: warranty.cancelled,
+  })).sort((a, b) => a.id - b.id),
+});
+
 export class TrustCartAPI {
   readonly deployedContractAddress: ContractAddress;
   readonly state$: Observable<TrustCartDerivedState>;
@@ -51,55 +70,7 @@ export class TrustCartAPI {
     this.providers.privateStateProvider.setContractAddress(this.deployedContractAddress);
     this.state$ = providers.publicDataProvider
       .contractStateObservable(this.deployedContractAddress, { type: 'latest' })
-      .pipe(
-        map((state) => ContractBindings.ledger(state.data)),
-        map((ledger): TrustCartDerivedState => ({
-          manufacturerCount: Number(ledger.nextManufacturerId),
-          sellerCount: Number(ledger.nextSellerId),
-          productCount: Number(ledger.nextProductId),
-          warrantyCount: Number(ledger.nextWarrantyId),
-          manufacturers: Array.from(ledger.manufacturers, ([id, mfr]): ManufacturerView => ({
-            id: Number(id),
-            name: decodeText(mfr.name),
-            brand: decodeText(mfr.brand),
-            mfrHash: bytesToHex(mfr.mfrHash),
-            productCount: Number(mfr.productCount),
-            active: mfr.active,
-          })).sort((a, b) => a.id - b.id),
-          sellers: Array.from(ledger.sellers, ([id, seller]): SellerView => ({
-            id: Number(id),
-            name: decodeText(seller.name),
-            mfrId: Number(seller.mfrId),
-            sellerHash: bytesToHex(seller.sellerHash),
-            authorized: seller.authorized,
-            salesCount: Number(seller.salesCount),
-          })).sort((a, b) => a.id - b.id),
-          products: Array.from(ledger.products, ([id, product]): ProductView => ({
-            id: Number(id),
-            mfrId: Number(product.mfrId),
-            model: decodeText(product.model),
-            category: decodeText(product.category),
-            batch: decodeText(product.batch),
-            warrantyMonths: Number(product.warrantyMonths),
-            productCommitment: bytesToHex(product.productCommitment),
-            ownerHash: bytesToHex(product.ownerHash),
-            pendingOwnerHash: bytesToHex(product.pendingOwnerHash),
-            warrantyId: Number(product.warrantyId),
-            sold: product.sold,
-            ownershipVersion: Number(product.ownershipVersion),
-            transfers: Number(product.transfers),
-            status: product.status,
-          })).sort((a, b) => a.id - b.id),
-          warranties: Array.from(ledger.warranties, ([id, warranty]): WarrantyView => ({
-            id: Number(id),
-            productId: Number(warranty.productId),
-            sellerId: Number(warranty.sellerId),
-            issuedAt: Number(warranty.issuedAt),
-            expiresAt: Number(warranty.expiresAt),
-            cancelled: warranty.cancelled,
-          })).sort((a, b) => a.id - b.id),
-        })),
-      );
+      .pipe(map((state) => trustCartStateFromLedger(ContractBindings.ledger(state.data))));
   }
   ownerCommitment(secretHex: string): string {
     return bytesToHex(ContractBindings.pureCircuits.ownerCommitment(hexToBytes(secretHex)));
