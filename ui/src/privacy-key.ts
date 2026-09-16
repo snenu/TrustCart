@@ -1,4 +1,5 @@
 const BACKUP_PREFIX = 'trustcart-key:v1:';
+import { validatePassword } from '@midnight-ntwrk/midnight-js-utils';
 const PBKDF2_ITERATIONS = 600_000;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
@@ -20,6 +21,11 @@ const validatePassphrase = (passphrase: string): void => {
   if (passphrase.length < 16 || classes < 3) {
     throw new Error('Use at least 16 characters from three character types.');
   }
+  validatePassword(passphrase);
+};
+
+export const isValidPrivacyPassphrase = (passphrase: string): boolean => {
+  try { validatePassphrase(passphrase); return true; } catch { return false; }
 };
 
 const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
