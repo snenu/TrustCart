@@ -1,0 +1,304 @@
+/**
+ * TrustCart — private proof of authentic products on Midnight.
+ *
+ * Public on-chain: product registry entries (model, category, batch label,
+ * warranty length, status), seller authorization, warranty windows, ownership
+ * versions, and revocation state — all keyed by opaque commitments.
+ *
+ * Private (never on-chain): wallet privacy secrets, product serial numbers,
+ * buyer identities, and purchase prices.
+ */
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export enum ProductStatus {
+  ACTIVE,
+  STOLEN,
+  LOST,
+  RECALLED,
+  COUNTERFEIT
+}
+
+export struct ManufacturerRecord {
+  name: Bytes<32>,
+  brand: Bytes<32>,
+  mfrHash: Bytes<32>,
+  productCount: Uint<64>,
+  active: Boolean
+}
+
+export struct SellerRecord {
+  name: Bytes<32>,
+  mfrId: Uint<64>,
+  sellerHash: Bytes<32>,
+  authorized: Boolean,
+  salesCount: Uint<64>
+}
+
+export struct ProductRecord {
+  mfrId: Uint<64>,
+  model: Bytes<32>,
+  category: Bytes<16>,
+  batch: Bytes<32>,
+  warrantyMonths: Uint<8>,
+  productCommitment: Bytes<32>,
+  ownerHash: Bytes<32>,
+  warrantyId: Uint<64>,
+  sold: Boolean,
+  ownershipVersion: Uint<64>,
+  transfers: Uint<64>,
+  status: ProductStatus
+}
+
+export struct WarrantyRecord {
+  productId: Uint<64>,
+  sellerId: Uint<64>,
+  issuedAt: Uint<64>,
+  expiresAt: Uint<64>,
+  cancelled: Boolean
+}
+
+struct MfrPreimage {
+  domain: Bytes<32>,
+  secret: Bytes<32>
+}
+
+struct SellerPreimage {
+  domain: Bytes<32>,
+  secret: Bytes<32>
+}
+
+struct OwnerPreimage {
+  domain: Bytes<32>,
+  secret: Bytes<32>
+}
+
+struct SerialPreimage {
+  domain: Bytes<32>,
+  secret: Bytes<32>,
+  productId: Uint<64>
+}
+
+export ledger manufacturers: Map<Uint<64>, ManufacturerRecord>;
+export ledger sellers: Map<Uint<64>, SellerRecord>;
+export ledger products: Map<Uint<64>, ProductRecord>;
+export ledger warranties: Map<Uint<64>, WarrantyRecord>;
+export ledger nextManufacturerId: Counter;
+export ledger nextSellerId: Counter;
+export ledger nextProductId: Counter;
+export ledger nextWarrantyId: Counter;
+
+witness localSecretKey(): Bytes<32>;
+
+export circuit mfrCommitment(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<MfrPreimage>(MfrPreimage {
+    domain: pad(32, "trustcart:mfr:v1"),
+    secret: sk
+  });
+}
+
+export circuit sellerCommitment(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<SellerPreimage>(SellerPreimage {
+    domain: pad(32, "trustcart:seller:v1"),
+    secret: sk
+  });
+}
+
+export circuit ownerCommitment(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<OwnerPreimage>(OwnerPreimage {
+    domain: pad(32, "trustcart:owner:v1"),
+    secret: sk
+  });
+}
+
+export circuit productCommitment(serialSecret: Bytes<32>, productId: Uint<64>): Bytes<32> {
+  return persistentHash<SerialPreimage>(SerialPreimage {
+    domain: pad(32, "trustcart:serial:v1"),
+    secret: serialSecret,
+    productId: productId
+  });
+}
+
+export circuit warrantyExpiryFor(issuedAt: Uint<64>, warrantyMonths: Uint<8>): Uint<64> {
+  return (issuedAt + ((warrantyMonths as Uint<64>) * 2592000)) as Uint<64>;
+}
+
+export circuit registerManufacturer(name: Bytes<32>, brand: Bytes<32>): [] {
+  const mfrHash = mfrCommitment(localSecretKey());
+  nextManufacturerId.increment(1);
+  const id = disclose(nextManufacturerId.read() as Uint<64>);
+  manufacturers.insert(id, ManufacturerRecord {
+    name: disclose(name),
+    brand: disclose(brand),
+    mfrHash: disclose(mfrHash),
+    productCount: 0 as Uint<64>,
+    active: true
+  });
+}
+
+export circuit registerProduct(
+  mfrId: Uint<64>,
+  model: Bytes<32>,
+  category: Bytes<16>,
+  batch: Bytes<32>,
+  warrantyMonths: Uint<8>,
+  serialSecret: Bytes<32>
+): [] {
+  const publicMfrId = disclose(mfrId);
+  assert(manufacturers.member(publicMfrId), "manufacturer not found");
+  const mfr = manufacturers.lookup(publicMfrId);
+  assert(mfr.active, "manufacturer account is inactive");
+  assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  assert(warrantyMonths > 0, "warranty duration must be positive");
+  assert(serialSecret != default<Bytes<32>>, "serial secret is required");
+
+  nextProductId.increment(1);
+  const productId = disclose(nextProductId.read() as Uint<64>);
+  products.insert(productId, ProductRecord {
+    mfrId: publicMfrId,
+    model: disclose(model),
+    category: disclose(category),
+    batch: disclose(batch),
+    warrantyMonths: disclose(warrantyMonths),
+    productCommitment: disclose(productCommitment(serialSecret, productId)),
+    ownerHash: mfr.mfrHash,
+    warrantyId: 0 as Uint<64>,
+    sold: false,
+    ownershipVersion: 1 as Uint<64>,
+    transfers: 0 as Uint<64>,
+    status: ProductStatus.ACTIVE
+  });
+  manufacturers.insert(publicMfrId, ManufacturerRecord { ...mfr, productCount: (mfr.productCount + 1) as Uint<64> });
+}
+
+export circuit registerSeller(name: Bytes<32>, mfrId: Uint<64>): [] {
+  const publicMfrId = disclose(mfrId);
+  assert(manufacturers.member(publicMfrId), "manufacturer not found");
+  const sellerHash = sellerCommitment(localSecretKey());
+  nextSellerId.increment(1);
+  const sellerId = disclose(nextSellerId.read() as Uint<64>);
+  sellers.insert(sellerId, SellerRecord {
+    name: disclose(name),
+    mfrId: publicMfrId,
+    sellerHash: disclose(sellerHash),
+    authorized: false,
+    salesCount: 0 as Uint<64>
+  });
+}
+export circuit authorizeSeller(mfrId: Uint<64>, sellerId: Uint<64>): [] {
+  const publicMfrId = disclose(mfrId);
+  const publicSellerId = disclose(sellerId);
+  assert(manufacturers.member(publicMfrId), "manufacturer not found");
+  assert(sellers.member(publicSellerId), "seller not found");
+  const mfr = manufacturers.lookup(publicMfrId);
+  const seller = sellers.lookup(publicSellerId);
+  assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  assert(seller.mfrId == publicMfrId, "seller belongs to another manufacturer");
+  sellers.insert(publicSellerId, SellerRecord { ...seller, authorized: true });
+}
+
+export circuit revokeSellerAuthorization(mfrId: Uint<64>, sellerId: Uint<64>): [] {
+  const publicMfrId = disclose(mfrId);
+  const publicSellerId = disclose(sellerId);
+  assert(manufacturers.member(publicMfrId), "manufacturer not found");
+  assert(sellers.member(publicSellerId), "seller not found");
+  const mfr = manufacturers.lookup(publicMfrId);
+  const seller = sellers.lookup(publicSellerId);
+  assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  assert(seller.mfrId == publicMfrId, "seller belongs to another manufacturer");
+  sellers.insert(publicSellerId, SellerRecord { ...seller, authorized: false });
+}
+
+export circuit registerSale(
+  sellerId: Uint<64>,
+  productId: Uint<64>,
+  buyerHash: Bytes<32>,
+  saleDate: Uint<64>
+): [] {
+  const publicSellerId = disclose(sellerId);
+  const publicProductId = disclose(productId);
+  assert(sellers.member(publicSellerId), "seller not found");
+  assert(products.member(publicProductId), "product not found");
+  const seller = sellers.lookup(publicSellerId);
+  const product = products.lookup(publicProductId);
+  assert(seller.authorized, "seller is not authorized");
+  assert(sellerCommitment(localSecretKey()) == seller.sellerHash, "seller authorization failed");
+  assert(product.status == ProductStatus.ACTIVE, "product is not active");
+  assert(!product.sold, "product already has a sale record");
+  assert(disclose(buyerHash) != default<Bytes<32>>, "buyer credential is required");
+
+  nextWarrantyId.increment(1);
+  const warrantyId = disclose(nextWarrantyId.read() as Uint<64>);
+  warranties.insert(warrantyId, WarrantyRecord {
+    productId: publicProductId,
+    sellerId: publicSellerId,
+    issuedAt: disclose(saleDate),
+    expiresAt: disclose(warrantyExpiryFor(saleDate, product.warrantyMonths)),
+    cancelled: false
+  });
+  products.insert(publicProductId, ProductRecord {
+    ...product,
+    ownerHash: disclose(buyerHash),
+    warrantyId: warrantyId,
+    sold: true
+  });
+  sellers.insert(publicSellerId, SellerRecord { ...seller, salesCount: (seller.salesCount + 1) as Uint<64> });
+}
+
+export circuit transferOwnership(productId: Uint<64>, newOwnerHash: Bytes<32>): [] {
+  const publicProductId = disclose(productId);
+  assert(products.member(publicProductId), "product not found");
+  const product = products.lookup(publicProductId);
+  assert(product.sold, "product has no registered owner yet");
+  assert(ownerCommitment(localSecretKey()) == product.ownerHash, "ownership proof failed");
+  assert(product.status == ProductStatus.ACTIVE, "product status blocks transfer");
+  assert(disclose(newOwnerHash) != product.ownerHash, "new owner must be different");
+
+  products.insert(publicProductId, ProductRecord {
+    ...product,
+    ownerHash: disclose(newOwnerHash),
+    ownershipVersion: (product.ownershipVersion + 1) as Uint<64>,
+    transfers: (product.transfers + 1) as Uint<64>
+  });
+}
+
+export circuit setProductStatus(productId: Uint<64>, status: ProductStatus): [] {
+  const publicProductId = disclose(productId);
+  assert(products.member(publicProductId), "product not found");
+  const product = products.lookup(publicProductId);
+  const mfr = manufacturers.lookup(product.mfrId);
+  assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  products.insert(publicProductId, ProductRecord { ...product, status: disclose(status) });
+}
+
+export circuit cancelWarranty(productId: Uint<64>): [] {
+  const publicProductId = disclose(productId);
+  assert(products.member(publicProductId), "product not found");
+  const product = products.lookup(publicProductId);
+  const mfr = manufacturers.lookup(product.mfrId);
+  assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  assert(product.warrantyId != 0, "no warranty record for this product");
+  const warranty = warranties.lookup(product.warrantyId);
+  assert(!warranty.cancelled, "warranty is already cancelled");
+  warranties.insert(product.warrantyId, WarrantyRecord { ...warranty, cancelled: true });
+}
+
+export circuit extendWarranty(productId: Uint<64>, extraMonths: Uint<8>): [] {
+  const publicProductId = disclose(productId);
+  const publicExtraMonths = disclose(extraMonths);
+  assert(products.member(publicProductId), "product not found");
+  const product = products.lookup(publicProductId);
+  const mfr = manufacturers.lookup(product.mfrId);
+  assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  assert(product.warrantyId != 0, "no warranty record for this product");
+  assert(publicExtraMonths > 0, "extension must be positive");
+  const warranty = warranties.lookup(product.warrantyId);
+  assert(!warranty.cancelled, "warranty is cancelled");
+  warranties.insert(product.warrantyId, WarrantyRecord {
+    ...warranty,
+    expiresAt: (warranty.expiresAt + ((publicExtraMonths as Uint<64>) * 2592000)) as Uint<64>
+  });
+}
+

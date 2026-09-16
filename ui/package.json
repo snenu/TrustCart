@@ -1,0 +1,17 @@
+{
+  "name": "trustcart-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build --mode preprod",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trustcart/api": "*",
+    "trustcart-contract": "*"
+  }
+}

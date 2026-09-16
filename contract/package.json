@@ -1,0 +1,20 @@
+{
+  "name": "trustcart-contract",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "compact": "compact compile +0.31.1 trustcart.compact managed/trustcart",
+    "build": "rimraf dist && tsc --project tsconfig.build.json && node ../scripts/copy-contract-artifacts.mjs",
+    "test": "vitest run"
+  }
+}
