@@ -14,7 +14,7 @@ import {
 } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import type { UnboundTransaction } from '@midnight-ntwrk/midnight-js-types';
 import { TrustCartAPI, type TrustCartCircuitKeys, type TrustCartProviders } from '../../api/src/index';
-import type { TrustCartPrivateState } from 'trustcart-contract';
+import type { TrustCartPrivateState } from '../../contract/src/index';
 import { inMemoryPrivateStateProvider } from './in-memory-private-state-provider';
 import { decryptPrivacyKey, encryptPrivacyKey } from './privacy-key';
 

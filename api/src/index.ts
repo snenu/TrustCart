@@ -164,7 +164,7 @@ export class TrustCartAPI {
     );
   }
 
-  async setProductStatus(productId: number, status: typeof ContractBindings.ProductStatus): Promise<void> {
+  async setProductStatus(productId: number, status: ContractBindings.ProductStatus): Promise<void> {
     await (this.deployedContract as any).callTx.setProductStatus(BigInt(productId), status);
   }
 
