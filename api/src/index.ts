@@ -23,6 +23,21 @@ import {
 } from './common-types.js';
 import { bytesToHex, decodeText, encodeCategory, encodeText, hexToBytes } from './encoding.js';
 
+const positiveId = (value: number, label: string): bigint => {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive integer.`);
+  return BigInt(value);
+};
+
+const boundedByte = (value: number, label: string): bigint => {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 255) throw new Error(`${label} must be between 1 and 255.`);
+  return BigInt(value);
+};
+
+const requiredText = (value: string, label: string): string => {
+  if (!value.trim()) throw new Error(`${label} is required.`);
+  return value.trim();
+};
+
 export class TrustCartAPI {
   readonly deployedContractAddress: ContractAddress;
   readonly state$: Observable<TrustCartDerivedState>;
@@ -118,46 +133,55 @@ export class TrustCartAPI {
 
   async registerManufacturer(input: RegisterManufacturerInput): Promise<string> {
     const tx = await this.deployedContract.callTx.registerManufacturer(
-      encodeText(input.name),
-      encodeText(input.brand),
+      encodeText(requiredText(input.name, 'Manufacturer name')),
+      encodeText(requiredText(input.brand, 'Brand')),
     );
     return tx.public.txId;
   }
 
   async registerProduct(input: RegisterProductInput): Promise<string> {
+    const mfrId = positiveId(input.mfrId, 'Manufacturer ID');
+    const warrantyMonths = boundedByte(input.warrantyMonths, 'Warranty months');
+    const model = requiredText(input.model, 'Model');
+    const category = requiredText(input.category, 'Category');
+    const batch = requiredText(input.batch, 'Batch');
+    if (!input.serialNumber.trim()) throw new Error('Serial number is required.');
     const tx = await this.deployedContract.callTx.registerProduct(
-      BigInt(input.mfrId),
-      encodeText(input.model),
-      encodeCategory(input.category),
-      encodeText(input.batch),
-      BigInt(input.warrantyMonths),
+      mfrId,
+      encodeText(model),
+      encodeCategory(category),
+      encodeText(batch),
+      warrantyMonths,
       encodeText(input.serialNumber),
     );
     return tx.public.txId;
   }
 
   async registerSeller(input: RegisterSellerInput): Promise<string> {
+    const mfrId = positiveId(input.mfrId, 'Manufacturer ID');
     const tx = await this.deployedContract.callTx.registerSeller(
-      encodeText(input.name),
-      BigInt(input.mfrId),
+      encodeText(requiredText(input.name, 'Seller name')),
+      mfrId,
     );
     return tx.public.txId;
   }
 
   async authorizeSeller(mfrId: number, sellerId: number): Promise<string> {
-    const tx = await this.deployedContract.callTx.authorizeSeller(BigInt(mfrId), BigInt(sellerId));
+    const tx = await this.deployedContract.callTx.authorizeSeller(positiveId(mfrId, 'Manufacturer ID'), positiveId(sellerId, 'Seller ID'));
     return tx.public.txId;
   }
 
   async revokeSellerAuthorization(mfrId: number, sellerId: number): Promise<string> {
-    const tx = await this.deployedContract.callTx.revokeSellerAuthorization(BigInt(mfrId), BigInt(sellerId));
+    const tx = await this.deployedContract.callTx.revokeSellerAuthorization(positiveId(mfrId, 'Manufacturer ID'), positiveId(sellerId, 'Seller ID'));
     return tx.public.txId;
   }
 
   async registerSale(input: RegisterSaleInput): Promise<string> {
+    const sellerId = positiveId(input.sellerId, 'Seller ID');
+    const productId = positiveId(input.productId, 'Product ID');
     const tx = await this.deployedContract.callTx.registerSale(
-      BigInt(input.sellerId),
-      BigInt(input.productId),
+      sellerId,
+      productId,
       hexToBytes(input.buyerReceivingCode),
       input.saleDate,
     );
@@ -166,34 +190,34 @@ export class TrustCartAPI {
 
   async transferOwnership(productId: number, newOwnerReceivingCode: string): Promise<string> {
     const tx = await this.deployedContract.callTx.transferOwnership(
-      BigInt(productId),
+      positiveId(productId, 'Product ID'),
       hexToBytes(newOwnerReceivingCode),
     );
     return tx.public.txId;
   }
 
   async acceptOwnershipTransfer(productId: number): Promise<string> {
-    const tx = await this.deployedContract.callTx.acceptOwnershipTransfer(BigInt(productId));
+    const tx = await this.deployedContract.callTx.acceptOwnershipTransfer(positiveId(productId, 'Product ID'));
     return tx.public.txId;
   }
 
   async cancelOwnershipTransfer(productId: number): Promise<string> {
-    const tx = await this.deployedContract.callTx.cancelOwnershipTransfer(BigInt(productId));
+    const tx = await this.deployedContract.callTx.cancelOwnershipTransfer(positiveId(productId, 'Product ID'));
     return tx.public.txId;
   }
 
   async setProductStatus(productId: number, status: ContractBindings.ProductStatus): Promise<string> {
-    const tx = await this.deployedContract.callTx.setProductStatus(BigInt(productId), status);
+    const tx = await this.deployedContract.callTx.setProductStatus(positiveId(productId, 'Product ID'), status);
     return tx.public.txId;
   }
 
   async cancelWarranty(productId: number): Promise<string> {
-    const tx = await this.deployedContract.callTx.cancelWarranty(BigInt(productId));
+    const tx = await this.deployedContract.callTx.cancelWarranty(positiveId(productId, 'Product ID'));
     return tx.public.txId;
   }
 
   async extendWarranty(productId: number, extraMonths: number): Promise<string> {
-    const tx = await this.deployedContract.callTx.extendWarranty(BigInt(productId), BigInt(extraMonths));
+    const tx = await this.deployedContract.callTx.extendWarranty(positiveId(productId, 'Product ID'), boundedByte(extraMonths, 'Extra months'));
     return tx.public.txId;
   }
 
