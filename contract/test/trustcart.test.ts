@@ -98,6 +98,19 @@ describe('TrustCart compiled Compact contract', () => {
     expect(() => call('registerSale', sellerId, productId, pureCircuits.ownerCommitment(BUYER_SECRET), 1_789_000_000n)).toThrow('product is not active');
   });
 
+  it('binds sellers to products from their authorized manufacturer', () => {
+    useSecret(bytes(9));
+    call('registerManufacturer', text('Other Devices'), text('OtherBrand'));
+    call('registerProduct', 2n, text('OtherPhone'), text('electronics', 16), text('BATCH-OTHER'), 12n, bytes(7));
+    useSecret(SELLER_SECRET);
+    expect(() => call('registerSale', sellerId, 2n, pureCircuits.ownerCommitment(BUYER_SECRET), 1_789_000_000n)).toThrow('seller is not authorized for this product manufacturer');
+  });
+
+  it('rejects future-dated sales at circuit level', () => {
+    useSecret(SELLER_SECRET);
+    expect(() => call('registerSale', sellerId, productId, pureCircuits.ownerCommitment(BUYER_SECRET), 1_900_000_000n)).toThrow('sale date cannot be in the future');
+  });
+
   it('transfers ownership privately and invalidates the previous owner', () => {
     useSecret(SELLER_SECRET);
     call('registerSale', sellerId, productId, pureCircuits.ownerCommitment(BUYER_SECRET), 1_789_000_000n);
