@@ -68,6 +68,7 @@ export class TrustCartAPI {
             warrantyMonths: Number(product.warrantyMonths),
             productCommitment: bytesToHex(product.productCommitment),
             ownerHash: bytesToHex(product.ownerHash),
+            pendingOwnerHash: bytesToHex(product.pendingOwnerHash),
             warrantyId: Number(product.warrantyId),
             sold: product.sold,
             ownershipVersion: Number(product.ownershipVersion),
@@ -101,18 +102,18 @@ export class TrustCartAPI {
     return bytesToHex(ContractBindings.pureCircuits.ownerCommitment(secret));
   }
 
-  productCommitment(serialNumber: string, productId: number): string {
+  productCommitment(serialNumber: string): string {
     return bytesToHex(
-      ContractBindings.pureCircuits.productCommitment(encodeText(serialNumber), BigInt(productId)),
+      ContractBindings.pureCircuits.productCommitment(encodeText(serialNumber)),
     );
   }
 
   ownsProduct(product: ProductView, secretHex: string): boolean {
-    return product.ownerHash === this.ownerCommitment(secretHex);
+    return product.sold && product.pendingOwnerHash === '0'.repeat(64) && product.ownerHash === this.ownerCommitment(secretHex);
   }
 
   isAuthentic(product: ProductView, serialNumber: string): boolean {
-    return product.productCommitment === this.productCommitment(serialNumber, product.id);
+    return product.productCommitment === this.productCommitment(serialNumber);
   }
 
   async registerManufacturer(input: RegisterManufacturerInput): Promise<void> {
@@ -162,6 +163,14 @@ export class TrustCartAPI {
       BigInt(productId),
       hexToBytes(newOwnerReceivingCode),
     );
+  }
+
+  async acceptOwnershipTransfer(productId: number): Promise<void> {
+    await (this.deployedContract as any).callTx.acceptOwnershipTransfer(BigInt(productId));
+  }
+
+  async cancelOwnershipTransfer(productId: number): Promise<void> {
+    await (this.deployedContract as any).callTx.cancelOwnershipTransfer(BigInt(productId));
   }
 
   async setProductStatus(productId: number, status: ContractBindings.ProductStatus): Promise<void> {

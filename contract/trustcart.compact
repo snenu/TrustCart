@@ -45,6 +45,7 @@ export struct ProductRecord {
   warrantyMonths: Uint<8>,
   productCommitment: Bytes<32>,
   ownerHash: Bytes<32>,
+  pendingOwnerHash: Bytes<32>,
   warrantyId: Uint<64>,
   sold: Boolean,
   ownershipVersion: Uint<64>,
@@ -77,14 +78,14 @@ struct OwnerPreimage {
 
 struct SerialPreimage {
   domain: Bytes<32>,
-  secret: Bytes<32>,
-  productId: Uint<64>
+  secret: Bytes<32>
 }
 
 export ledger manufacturers: Map<Uint<64>, ManufacturerRecord>;
 export ledger sellers: Map<Uint<64>, SellerRecord>;
 export ledger products: Map<Uint<64>, ProductRecord>;
 export ledger warranties: Map<Uint<64>, WarrantyRecord>;
+export ledger productCommitments: Map<Bytes<32>, Boolean>;
 export ledger nextManufacturerId: Counter;
 export ledger nextSellerId: Counter;
 export ledger nextProductId: Counter;
@@ -113,11 +114,10 @@ export circuit ownerCommitment(sk: Bytes<32>): Bytes<32> {
   });
 }
 
-export circuit productCommitment(serialSecret: Bytes<32>, productId: Uint<64>): Bytes<32> {
+export circuit productCommitment(serialSecret: Bytes<32>): Bytes<32> {
   return persistentHash<SerialPreimage>(SerialPreimage {
     domain: pad(32, "trustcart:serial:v1"),
-    secret: serialSecret,
-    productId: productId
+    secret: serialSecret
   });
 }
 
@@ -153,6 +153,9 @@ export circuit registerProduct(
   assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
   assert(warrantyMonths > 0, "warranty duration must be positive");
   assert(serialSecret != default<Bytes<32>>, "serial secret is required");
+  const commitment = productCommitment(serialSecret);
+  const publicCommitment = disclose(commitment);
+  assert(!productCommitments.member(publicCommitment), "product serial is already registered");
 
   nextProductId.increment(1);
   const productId = disclose(nextProductId.read() as Uint<64>);
@@ -162,14 +165,16 @@ export circuit registerProduct(
     category: disclose(category),
     batch: disclose(batch),
     warrantyMonths: disclose(warrantyMonths),
-    productCommitment: disclose(productCommitment(serialSecret, productId)),
+    productCommitment: publicCommitment,
     ownerHash: mfr.mfrHash,
+    pendingOwnerHash: default<Bytes<32>>,
     warrantyId: 0 as Uint<64>,
     sold: false,
     ownershipVersion: 1 as Uint<64>,
     transfers: 0 as Uint<64>,
     status: ProductStatus.ACTIVE
   });
+  productCommitments.insert(publicCommitment, true);
   manufacturers.insert(publicMfrId, ManufacturerRecord { ...mfr, productCount: (mfr.productCount + 1) as Uint<64> });
 }
 
@@ -225,9 +230,11 @@ export circuit registerSale(
   const product = products.lookup(publicProductId);
   assert(seller.authorized, "seller is not authorized");
   assert(sellerCommitment(localSecretKey()) == seller.sellerHash, "seller authorization failed");
+  assert(seller.mfrId == product.mfrId, "seller is not authorized for this product manufacturer");
   assert(product.status == ProductStatus.ACTIVE, "product is not active");
   assert(!product.sold, "product already has a sale record");
   assert(disclose(buyerHash) != default<Bytes<32>>, "buyer credential is required");
+  assert(blockTimeGte(disclose(saleDate)), "sale date cannot be in the future");
 
   nextWarrantyId.increment(1);
   const warrantyId = disclose(nextWarrantyId.read() as Uint<64>);
@@ -254,14 +261,41 @@ export circuit transferOwnership(productId: Uint<64>, newOwnerHash: Bytes<32>): 
   assert(product.sold, "product has no registered owner yet");
   assert(ownerCommitment(localSecretKey()) == product.ownerHash, "ownership proof failed");
   assert(product.status == ProductStatus.ACTIVE, "product status blocks transfer");
+  assert(disclose(newOwnerHash) != default<Bytes<32>>, "new owner credential is required");
   assert(disclose(newOwnerHash) != product.ownerHash, "new owner must be different");
+  assert(product.pendingOwnerHash == default<Bytes<32>>, "another ownership transfer is already pending");
 
   products.insert(publicProductId, ProductRecord {
     ...product,
-    ownerHash: disclose(newOwnerHash),
+    pendingOwnerHash: disclose(newOwnerHash)
+  });
+}
+
+export circuit acceptOwnershipTransfer(productId: Uint<64>): [] {
+  const publicProductId = disclose(productId);
+  assert(products.member(publicProductId), "product not found");
+  const product = products.lookup(publicProductId);
+  assert(product.sold, "product has no registered owner yet");
+  assert(product.status == ProductStatus.ACTIVE, "product status blocks transfer");
+  assert(product.pendingOwnerHash != default<Bytes<32>>, "no ownership transfer is pending");
+  assert(ownerCommitment(localSecretKey()) == product.pendingOwnerHash, "recipient ownership proof failed");
+
+  products.insert(publicProductId, ProductRecord {
+    ...product,
+    ownerHash: product.pendingOwnerHash,
+    pendingOwnerHash: default<Bytes<32>>,
     ownershipVersion: (product.ownershipVersion + 1) as Uint<64>,
     transfers: (product.transfers + 1) as Uint<64>
   });
+}
+
+export circuit cancelOwnershipTransfer(productId: Uint<64>): [] {
+  const publicProductId = disclose(productId);
+  assert(products.member(publicProductId), "product not found");
+  const product = products.lookup(publicProductId);
+  assert(ownerCommitment(localSecretKey()) == product.ownerHash, "ownership proof failed");
+  assert(product.pendingOwnerHash != default<Bytes<32>>, "no ownership transfer is pending");
+  products.insert(publicProductId, ProductRecord { ...product, pendingOwnerHash: default<Bytes<32>> });
 }
 
 export circuit setProductStatus(productId: Uint<64>, status: ProductStatus): [] {
@@ -270,6 +304,9 @@ export circuit setProductStatus(productId: Uint<64>, status: ProductStatus): [] 
   const product = products.lookup(publicProductId);
   const mfr = manufacturers.lookup(product.mfrId);
   assert(mfrCommitment(localSecretKey()) == mfr.mfrHash, "manufacturer authorization failed");
+  if (product.status != ProductStatus.ACTIVE) {
+    assert(status != ProductStatus.ACTIVE, "terminal product status cannot be restored");
+  }
   products.insert(publicProductId, ProductRecord { ...product, status: disclose(status) });
 }
 

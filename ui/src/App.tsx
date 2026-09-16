@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity, ArrowRight, BadgeCheck, BadgeX, Boxes, Check, CheckCircle2, ChevronRight,
@@ -19,9 +19,9 @@ type TabId = 'overview' | 'verify' | 'manufacture' | 'sell' | 'own' | 'settings'
 type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string };
 type Session = { manager: BrowserTrustCartManager; summary: WalletSummary; secretHex: string; receivingCode: string };
 
-const wallets = (): Record<string, InitialAPI | undefined> => {
-  const injected = (globalThis as unknown as { midnight?: () => Record<string, InitialAPI | undefined> }).midnight;
-  return injected?.() ?? {};
+const readInjectedWallets = (): Record<string, InitialAPI | undefined> => {
+  const injected = (globalThis as unknown as { midnight?: Record<string, InitialAPI | undefined> }).midnight;
+  return injected ?? {};
 };
 const shortHex = (value: string, size = 8) => value.length > size * 2 + 1 ? `${value.slice(0, size)}...${value.slice(-size)}` : value;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -50,7 +50,13 @@ function ProductLine({ product, state, commitment = false }: { product: ProductV
 function Toasts({ toasts }: { toasts: Toast[] }) { return <div className="toast-stack"><AnimatePresence>{toasts.map((t) => <motion.div key={t.id} className={`toast toast-${t.kind}`} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 18 }}>{t.kind === 'ok' ? <CheckCircle2 className={icon} /> : t.kind === 'err' ? <BadgeX className={icon} /> : <Activity className={icon} />}<span>{t.text}</span></motion.div>)}</AnimatePresence></div>; }
 
 function ConnectScreen({ onConnect, busy, error }: { onConnect: (id?: string) => void; busy: boolean; error: string | null }) {
-  const options: WalletOption[] = useMemo(() => listCompatibleWallets(wallets()), []);
+  const [options, setOptions] = useState<WalletOption[]>(() => listCompatibleWallets(readInjectedWallets()));
+  useEffect(() => {
+    const refresh = () => setOptions(listCompatibleWallets(readInjectedWallets()));
+    refresh();
+    const timer = window.setInterval(refresh, 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
   return <main className="connect-page"><div className="connect-grid" /><div className="connect-orbit orbit-one" /><div className="connect-orbit orbit-two" /><motion.div className="connect-content" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><div className="brand-lockup large"><span className="brand-mark"><ShieldCheck className="h-6 w-6" /></span><span>trust<span>cart</span></span></div><p className="kicker connect-kicker">PRIVATE PRODUCT PROOF / MIDNIGHT PREPROD</p><h1>Trust what you buy.<br /><em>Keep what is yours.</em></h1><p className="connect-lede">A private product passport for authenticity, ownership, and warranty checks. The chain sees commitments and state. Your serials, prices, and identity stay yours.</p><div className="connect-points">{[['Serial blind', 'Verify without publishing a serial.'], ['Owner private', 'Transfer with one-way commitments.'], ['Warranty live', 'Keep warranty state verifiable.']].map(([title, text]) => <div className="connect-point" key={title}><span className="point-line" /><div><strong>{title}</strong><p>{text}</p></div></div>)}</div><button className={`${primary} connect-button`} disabled={busy} onClick={() => onConnect()}>{busy ? <Spinner /> : <Wallet className={icon} />}{busy ? 'Opening wallet...' : 'Connect Midnight wallet'}<ArrowRight className="h-4 w-4" /></button>{options.length > 1 && <div className="wallet-options">{options.map(({ id, wallet }) => <button className={secondary} key={id} disabled={busy} onClick={() => onConnect(id)}>Use {wallet.name}</button>)}</div>}{error && <div className="inline-error"><BadgeX className={icon} />{error}</div>}<p className="connect-foot">Target network <strong>{NETWORK_ID}</strong><span className="live-dot" /> Proving happens locally</p></motion.div></main>;
 }
 
@@ -115,7 +121,7 @@ function Settings({ api, manager, summary, joining, setJoining, join, toast }: {
 function App() {
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [session, setSession] = useState<Session | null>(null); const [api, setApi] = useState<TrustCartAPI | null>(null); const [state, setState] = useState<TrustCartDerivedState | null>(null); const [toasts, setToasts] = useState<Toast[]>([]);
   const toast = useCallback((kind: Toast['kind'], text: string) => { const id = Date.now() + Math.random(); setToasts((old) => [...old.slice(-3), { id, kind, text }]); window.setTimeout(() => setToasts((old) => old.filter((item) => item.id !== id)), 5000); }, []);
-  const connect = async (walletId?: string) => { setBusy(true); setError(null); try { const attempt = beginWalletConnection(wallets(), NETWORK_ID, walletId); const manager = new BrowserTrustCartManager(attempt.wallet, attempt.connectedAPI); const [summary, secretHex, receivingCode] = await Promise.all([manager.getWalletSummary(), manager.getSecretHex(), manager.getReceivingCode()]); const next = { manager, summary, secretHex, receivingCode }; setSession(next); const saved = localStorage.getItem(CONTRACT_ADDRESS_KEY); if (saved) { try { setApi(await manager.join(saved)); } catch { localStorage.removeItem(CONTRACT_ADDRESS_KEY); toast('info', 'Saved contract unavailable. Choose a contract to continue.'); } } } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
+  const connect = async (walletId?: string) => { setBusy(true); setError(null); try { const attempt = beginWalletConnection(readInjectedWallets(), NETWORK_ID, walletId); const manager = new BrowserTrustCartManager(attempt.wallet, attempt.connectedAPI); const [summary, secretHex, receivingCode] = await Promise.all([manager.getWalletSummary(), manager.getSecretHex(), manager.getReceivingCode()]); const next = { manager, summary, secretHex, receivingCode }; setSession(next); const saved = localStorage.getItem(CONTRACT_ADDRESS_KEY); if (saved) { try { setApi(await manager.join(saved)); } catch { localStorage.removeItem(CONTRACT_ADDRESS_KEY); toast('info', 'Saved contract unavailable. Choose a contract to continue.'); } } } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   useEffect(() => { if (!api) { setState(null); return; } const sub = api.state$.subscribe({ next: setState, error: (e) => toast('err', e instanceof Error ? e.message : String(e)) }); return () => sub.unsubscribe(); }, [api, toast]);
   if (!session) return <><ConnectScreen onConnect={(id) => void connect(id)} busy={busy} error={error} /><Toasts toasts={toasts} /></>;
   if (!api) return <><Setup session={session} ready={setApi} toast={toast} /><Toasts toasts={toasts} /></>;

@@ -2,6 +2,7 @@ import type { ConnectedAPI, InitialAPI } from '@midnight-ntwrk/dapp-connector-ap
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
+import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { type NetworkId, setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { fromHex, toHex, type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import {
@@ -14,8 +15,6 @@ import {
 } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import type { UnboundTransaction } from '@midnight-ntwrk/midnight-js-types';
 import { TrustCartAPI, type TrustCartCircuitKeys, type TrustCartProviders } from '../../api/src/index';
-import type { TrustCartPrivateState } from '../../contract/src/index';
-import { inMemoryPrivateStateProvider } from './in-memory-private-state-provider';
 import { decryptPrivacyKey, encryptPrivacyKey } from './privacy-key';
 
 const NETWORK_ID = (import.meta.env.VITE_NETWORK_ID ?? 'preprod') as NetworkId;
@@ -39,6 +38,7 @@ type BrowserConnection = {
 };
 
 const walletConnectTimeoutMs = 120_000;
+const BACKUP_PREFIX = 'trustcart-backup:v2:';
 
 const withTimeout = <T,>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> =>
   new Promise((resolve, reject) => {
@@ -74,19 +74,33 @@ export class BrowserTrustCartManager {
     private readonly connectedAPI: Promise<ConnectedAPI>,
   ) {}
 
-  private async secretStorageKey(): Promise<string> {
-    const address = (await this.connection()).summary.unshieldedAddress;
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(address)));
+  private async secretStorageKey(address?: string): Promise<string> {
+    const resolvedAddress = address ?? (await this.connection()).summary.unshieldedAddress;
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(resolvedAddress)));
     return `trustcart:private-secret:v2:${toHex(digest)}`;
   }
 
-  private async getSecretKey(): Promise<Uint8Array> {
-    const storageKey = await this.secretStorageKey();
+  private async getSecretKeyForAddress(address: string): Promise<Uint8Array> {
+    const storageKey = await this.secretStorageKey(address);
     const stored = localStorage.getItem(storageKey);
     if (stored) return Uint8Array.from(atob(stored), (character) => character.charCodeAt(0));
     const secret = crypto.getRandomValues(new Uint8Array(32));
     localStorage.setItem(storageKey, btoa(String.fromCharCode(...secret)));
     return secret;
+  }
+
+  private async getSecretKey(): Promise<Uint8Array> {
+    return this.getSecretKeyForAddress((await this.connection()).summary.unshieldedAddress);
+  }
+
+  private async privateStoragePassword(address: string): Promise<string> {
+    const key = `trustcart:private-storage-password:v1:${toHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(address))))}`;
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    const random = crypto.getRandomValues(new Uint8Array(32));
+    const password = `TrustCart!${btoa(String.fromCharCode(...random))}#Store`;
+    localStorage.setItem(key, password);
+    return password;
   }
 
   private connection(): Promise<BrowserConnection> {
@@ -115,11 +129,21 @@ export class BrowserTrustCartManager {
     }
     const proofServerUri = await resolveProofServer(config.proverServerUri);
 
-    const shielded = await connectedAPI.getShieldedAddresses();
+    const [{ unshieldedAddress }, { dustAddress }, shielded] = await Promise.all([
+      connectedAPI.getUnshieldedAddress(),
+      connectedAPI.getDustAddress(),
+      connectedAPI.getShieldedAddresses(),
+    ]);
     const zkConfigRoot = `${window.location.origin}${ZK_CONFIG_PATH}`;
     const zkConfigProvider = new FetchZkConfigProvider<TrustCartCircuitKeys>(zkConfigRoot, fetch.bind(window));
     const providers: TrustCartProviders = {
-      privateStateProvider: inMemoryPrivateStateProvider<string, TrustCartPrivateState>(),
+      privateStateProvider: levelPrivateStateProvider({
+        midnightDbName: 'trustcart-midnight',
+        privateStateStoreName: 'private-states',
+        signingKeyStoreName: 'signing-keys',
+        accountId: unshieldedAddress,
+        privateStoragePasswordProvider: () => this.privateStoragePassword(unshieldedAddress),
+      }),
       zkConfigProvider,
       proofProvider: httpClientProofProvider(proofServerUri, zkConfigProvider),
       publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri),
@@ -144,10 +168,6 @@ export class BrowserTrustCartManager {
       },
     };
 
-    const [{ unshieldedAddress }, { dustAddress }] = await Promise.all([
-      connectedAPI.getUnshieldedAddress(),
-      connectedAPI.getDustAddress(),
-    ]);
     return {
       connectedAPI,
       providers,
@@ -188,11 +208,35 @@ export class BrowserTrustCartManager {
   }
 
   async exportPrivacyKey(passphrase: string): Promise<string> {
-    return encryptPrivacyKey(await this.getSecretKey(), passphrase);
+    const { providers } = await this.connection();
+    const [secretBackup, privateStates, signingKeys] = await Promise.all([
+      encryptPrivacyKey(await this.getSecretKey(), passphrase),
+      providers.privateStateProvider.exportPrivateStates({ password: passphrase }),
+      providers.privateStateProvider.exportSigningKeys({ password: passphrase }),
+    ]);
+    const payload = new TextEncoder().encode(JSON.stringify({ secretBackup, privateStates, signingKeys }));
+    return `${BACKUP_PREFIX}${btoa(String.fromCharCode(...payload))}`;
   }
 
   async importPrivacyKey(backup: string, passphrase: string): Promise<void> {
-    const secret = await decryptPrivacyKey(backup, passphrase);
+    const normalized = backup.trim();
+    if (normalized.startsWith('trustcart-key:v1:')) {
+      const secret = await decryptPrivacyKey(normalized, passphrase);
+      localStorage.setItem(await this.secretStorageKey(), btoa(String.fromCharCode(...secret)));
+      return;
+    }
+    if (!normalized.startsWith(BACKUP_PREFIX)) throw new Error('This TrustCart backup is not valid.');
+    let payload: { secretBackup: string; privateStates: Parameters<TrustCartProviders['privateStateProvider']['importPrivateStates']>[0]; signingKeys: Parameters<TrustCartProviders['privateStateProvider']['importSigningKeys']>[0] };
+    try {
+      const bytes = Uint8Array.from(atob(normalized.slice(BACKUP_PREFIX.length)), (character) => character.charCodeAt(0));
+      payload = JSON.parse(new TextDecoder().decode(bytes)) as typeof payload;
+    } catch {
+      throw new Error('This TrustCart backup is not valid.');
+    }
+    const secret = await decryptPrivacyKey(payload.secretBackup, passphrase);
+    const { providers } = await this.connection();
+    await providers.privateStateProvider.importPrivateStates(payload.privateStates, { password: passphrase, conflictStrategy: 'overwrite' });
+    await providers.privateStateProvider.importSigningKeys(payload.signingKeys, { password: passphrase, conflictStrategy: 'overwrite' });
     localStorage.setItem(await this.secretStorageKey(), btoa(String.fromCharCode(...secret)));
   }
 }

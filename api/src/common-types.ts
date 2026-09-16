@@ -14,6 +14,8 @@ export type TrustCartCircuitKeys =
   | 'revokeSellerAuthorization'
   | 'registerSale'
   | 'transferOwnership'
+  | 'acceptOwnershipTransfer'
+  | 'cancelOwnershipTransfer'
   | 'setProductStatus'
   | 'cancelWarranty'
   | 'extendWarranty';
@@ -48,6 +50,7 @@ export interface ProductView {
   readonly warrantyMonths: number;
   readonly productCommitment: string;
   readonly ownerHash: string;
+  readonly pendingOwnerHash: string;
   readonly warrantyId: number;
   readonly sold: boolean;
   readonly ownershipVersion: number;

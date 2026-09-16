@@ -41,7 +41,7 @@ describe('TrustCart compiled Compact contract', () => {
   beforeEach(() => {
     contract = new Contract(createWitnesses());
     const initial = contract.initialState(Runtime.createConstructorContext(createTrustCartPrivateState(MFR_SECRET), COIN));
-    context = Runtime.createCircuitContext(Runtime.sampleContractAddress(), COIN, initial.currentContractState, initial.currentPrivateState);
+    context = Runtime.createCircuitContext(Runtime.sampleContractAddress(), COIN, initial.currentContractState, initial.currentPrivateState, undefined, undefined, 1_800_000_000n);
     call('registerManufacturer', text('Example Devices'), text('ExampleBrand'));
     registerSellerAndProduct();
   });
@@ -53,7 +53,7 @@ describe('TrustCart compiled Compact contract', () => {
     expect(state.nextManufacturerId).toBe(1n);
     expect(mfr.mfrHash).toEqual(pureCircuits.mfrCommitment(MFR_SECRET));
     expect(mfr.active).toBe(true);
-    expect(product.productCommitment).toEqual(pureCircuits.productCommitment(SERIAL_SECRET, productId));
+    expect(product.productCommitment).toEqual(pureCircuits.productCommitment(SERIAL_SECRET));
     expect(product.status).toBe(ProductStatus.ACTIVE);
     expect(product.sold).toBe(false);
   });
@@ -103,11 +103,14 @@ describe('TrustCart compiled Compact contract', () => {
     call('registerSale', sellerId, productId, pureCircuits.ownerCommitment(BUYER_SECRET), 1_789_000_000n);
     useSecret(BUYER_SECRET);
     call('transferOwnership', productId, pureCircuits.ownerCommitment(NEW_BUYER_SECRET));
+    expect(ledger(context.currentQueryContext.state).products.lookup(productId).pendingOwnerHash).toEqual(pureCircuits.ownerCommitment(NEW_BUYER_SECRET));
+    useSecret(NEW_BUYER_SECRET);
+    call('acceptOwnershipTransfer', productId);
     const product = ledger(context.currentQueryContext.state).products.lookup(productId);
     expect(product.ownerHash).toEqual(pureCircuits.ownerCommitment(NEW_BUYER_SECRET));
     expect(product.ownershipVersion).toBe(2n);
     expect(product.transfers).toBe(1n);
-    useSecret(BUYER_SECRET);
+    useSecret(NEW_BUYER_SECRET);
     expect(() => call('transferOwnership', productId, pureCircuits.ownerCommitment(bytes(8)))).toThrow('ownership proof failed');
   });
 
@@ -140,5 +143,14 @@ describe('TrustCart compiled Compact contract', () => {
     const serialized = JSON.stringify(ledger(context.currentQueryContext.state), (_, value) => typeof value === 'bigint' ? value.toString() : value);
     expect(serialized).not.toContain('Example Devices');
     expect(serialized).not.toContain('Authorized Seller A');
+  });
+
+  it('rejects duplicate serials and zero ownership credentials', () => {
+    useSecret(MFR_SECRET);
+    expect(() => call('registerProduct', 1n, text('Duplicate'), text('electronics', 16), text('BATCH-DUP'), 12n, SERIAL_SECRET)).toThrow('product serial is already registered');
+    useSecret(SELLER_SECRET);
+    call('registerSale', sellerId, productId, pureCircuits.ownerCommitment(BUYER_SECRET), 1_789_000_000n);
+    useSecret(BUYER_SECRET);
+    expect(() => call('transferOwnership', productId, bytes(0))).toThrow('new owner credential is required');
   });
 });
