@@ -110,7 +110,7 @@ describe('TrustCart compiled Compact contract', () => {
     expect(product.ownerHash).toEqual(pureCircuits.ownerCommitment(NEW_BUYER_SECRET));
     expect(product.ownershipVersion).toBe(2n);
     expect(product.transfers).toBe(1n);
-    useSecret(NEW_BUYER_SECRET);
+    useSecret(BUYER_SECRET);
     expect(() => call('transferOwnership', productId, pureCircuits.ownerCommitment(bytes(8)))).toThrow('ownership proof failed');
   });
 
