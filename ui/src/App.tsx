@@ -14,7 +14,7 @@ import {
 } from '../../api/src/index';
 
 const NETWORK_ID = (import.meta.env.VITE_NETWORK_ID ?? 'preprod') as string;
-const CONTRACT_ADDRESS_KEY = 'trustcart:contract-address:v1';
+const CONTRACT_ADDRESS_KEY = 'trustcart:contract-address:v2';
 type TabId = 'overview' | 'verify' | 'manufacture' | 'sell' | 'own' | 'settings';
 type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string };
 type Session = { manager: BrowserTrustCartManager; summary: WalletSummary; secretHex: string; receivingCode: string };

@@ -246,11 +246,13 @@ export circuit registerSale(
 
   nextWarrantyId.increment(1);
   const warrantyId = disclose(nextWarrantyId.read() as Uint<64>);
+  const expiresAt = warrantyExpiryFor(saleDate, product.warrantyMonths);
+  assert(expiresAt > saleDate, "warranty expiry exceeds the protocol limit");
   warranties.insert(warrantyId, WarrantyRecord {
     productId: publicProductId,
     sellerId: publicSellerId,
     issuedAt: disclose(saleDate),
-    expiresAt: disclose(warrantyExpiryFor(saleDate, product.warrantyMonths)),
+    expiresAt: disclose(expiresAt),
     cancelled: false
   });
   products.insert(publicProductId, ProductRecord {
@@ -341,9 +343,11 @@ export circuit extendWarranty(productId: Uint<64>, extraMonths: Uint<8>): [] {
   assert(publicExtraMonths > 0, "extension must be positive");
   const warranty = warranties.lookup(product.warrantyId);
   assert(!warranty.cancelled, "warranty is cancelled");
+  const expiresAt = warrantyExpiryFor(warranty.expiresAt, publicExtraMonths);
+  assert(expiresAt > warranty.expiresAt, "warranty expiry exceeds the protocol limit");
   warranties.insert(product.warrantyId, WarrantyRecord {
     ...warranty,
-    expiresAt: (warranty.expiresAt + ((publicExtraMonths as Uint<64>) * 2592000)) as Uint<64>
+    expiresAt: expiresAt
   });
 }
 
