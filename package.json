@@ -10,14 +10,15 @@
   ],
   "scripts": {
     "compile": "node scripts/compile-contract.mjs",
+    "ensure:contract": "node scripts/ensure-contract-compiled.mjs",
     "prepare:zk": "node scripts/copy-zk-artifacts.mjs",
     "build:contract": "npm run build --workspace=trustcart-contract",
     "build:api": "npm run build --workspace=@trustcart/api",
     "build:ui": "npm run prepare:zk && npm run build --workspace=trustcart-ui",
-    "build": "npm run build:contract && npm run build:api && npm run build:ui",
-    "dev": "npm run prepare:zk && npm run dev --workspace=trustcart-ui",
-    "test": "npm run test --workspace=trustcart-contract && npm run test --workspace=trustcart-ui",
-    "typecheck": "npm run typecheck --workspace=@trustcart/api && npm run typecheck --workspace=trustcart-ui"
+    "build": "npm run ensure:contract && npm run build:contract && npm run build:api && npm run build:ui",
+    "dev": "npm run ensure:contract && npm run prepare:zk && npm run dev --workspace=trustcart-ui",
+    "test": "npm run ensure:contract && npm run test --workspace=trustcart-contract && npm run test --workspace=trustcart-ui",
+    "typecheck": "npm run ensure:contract && npm run typecheck --workspace=@trustcart/api && npm run typecheck --workspace=trustcart-ui"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",

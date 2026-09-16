@@ -19,7 +19,7 @@ import { decryptPrivacyKey, encryptPrivacyKey } from './privacy-key';
 
 const NETWORK_ID = (import.meta.env.VITE_NETWORK_ID ?? 'preprod') as NetworkId;
 const PREFERRED_PROOF_SERVER = (import.meta.env.VITE_PROOF_SERVER_URL ?? '').replace(/\/$/, '');
-const ZK_CONFIG_PATH = (import.meta.env.VITE_ZK_CONFIG_PATH ?? '').replace(/\/$/, '');
+const ZK_CONFIG_PATH = (import.meta.env.VITE_ZK_CONFIG_PATH ?? '/zk/trustcart-v1').replace(/\/$/, '');
 
 export interface WalletSummary {
   readonly name: string;
