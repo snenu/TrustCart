@@ -140,6 +140,7 @@ export circuit registerManufacturer(name: Bytes<32>, brand: Bytes<32>): [] {
     productCount: 0 as Uint<64>,
     active: true
   });
+  manufacturerCommitments.insert(publicMfrHash, true);
 }
 
 export circuit registerProduct(
@@ -276,7 +277,6 @@ export circuit transferOwnership(productId: Uint<64>, newOwnerHash: Bytes<32>): 
     ...product,
     pendingOwnerHash: disclose(newOwnerHash)
   });
-  manufacturerCommitments.insert(publicMfrHash, true);
 }
 
 export circuit acceptOwnershipTransfer(productId: Uint<64>): [] {
