@@ -37,6 +37,7 @@
     "@midnight-ntwrk/wallet-sdk-address-format": "3.1.2",
     "@tailwindcss/vite": "^4.1.13",
     "buffer": "^6.0.3",
+    "events": "^3.3.0",
     "fp-ts": "^2.16.11",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.544.0",
