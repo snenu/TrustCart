@@ -10,10 +10,14 @@ import { beginWalletConnection, listCompatibleWallets, type WalletOption } from 
 import { BrowserTrustCartManager, type WalletSummary } from './browser-manager';
 import {
   ProductStatus, TrustCartAPI, dateToEpoch, formatEpochDate,
+  productCommitmentForSerial,
   type ManufacturerView, type ProductView, type SellerView, type TrustCartDerivedState, type WarrantyView,
 } from '../../api/src/index';
+import { TrustCartPublicReader } from '../../api/src/public-reader';
 
 const NETWORK_ID = (import.meta.env.VITE_NETWORK_ID ?? 'preprod') as string;
+const PUBLIC_INDEXER_URI = import.meta.env.VITE_PUBLIC_INDEXER_URI ?? 'https://indexer.preprod.midnight.network/api/v4/graphql';
+const PUBLIC_INDEXER_WS_URI = import.meta.env.VITE_PUBLIC_INDEXER_WS_URI ?? 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws';
 const CONTRACT_ADDRESS_KEY = 'trustcart:contract-address:v2';
 type TabId = 'overview' | 'verify' | 'manufacture' | 'sell' | 'own' | 'settings';
 type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string };
@@ -58,6 +62,13 @@ function ConnectScreen({ onConnect, busy, error }: { onConnect: (id?: string) =>
     return () => window.clearInterval(timer);
   }, []);
   return <main className="connect-page"><div className="connect-grid" /><div className="connect-orbit orbit-one" /><div className="connect-orbit orbit-two" /><motion.div className="connect-content" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><div className="brand-lockup large"><span className="brand-mark"><ShieldCheck className="h-6 w-6" /></span><span>trust<span>cart</span></span></div><p className="kicker connect-kicker">PRIVATE PRODUCT PROOF / MIDNIGHT PREPROD</p><h1>Trust what you buy.<br /><em>Keep what is yours.</em></h1><p className="connect-lede">A private product passport for authenticity, ownership, and warranty checks. The chain sees commitments and state. Your serials, prices, and identity stay yours.</p><div className="connect-points">{[['Serial blind', 'Verify without publishing a serial.'], ['Owner private', 'Transfer with one-way commitments.'], ['Warranty live', 'Keep warranty state verifiable.']].map(([title, text]) => <div className="connect-point" key={title}><span className="point-line" /><div><strong>{title}</strong><p>{text}</p></div></div>)}</div><button className={`${primary} connect-button`} disabled={busy} onClick={() => onConnect()}>{busy ? <Spinner /> : <Wallet className={icon} />}{busy ? 'Opening wallet...' : 'Connect Midnight wallet'}<ArrowRight className="h-4 w-4" /></button>{options.length > 1 && <div className="wallet-options">{options.map(({ id, wallet }) => <button className={secondary} key={id} disabled={busy} onClick={() => onConnect(id)}>Use {wallet.name}</button>)}</div>}{error && <div className="inline-error"><BadgeX className={icon} />{error}</div>}<p className="connect-foot">Target network <strong>{NETWORK_ID}</strong><span className="live-dot" /> Proving happens locally</p></motion.div></main>;
+}
+
+function PublicVerification() {
+  const [contractAddress, setContractAddress] = useState(''); const [serial, setSerial] = useState(''); const [state, setState] = useState<TrustCartDerivedState | null>(null); const [message, setMessage] = useState('Paste a contract address to read its public registry.'); const [busy, setBusy] = useState(false);
+  const readRegistry = () => { if (!contractAddress.trim()) { setMessage('A contract address is required.'); return; } setBusy(true); setMessage('Reading the public registry...'); const reader = new TrustCartPublicReader(PUBLIC_INDEXER_URI, PUBLIC_INDEXER_WS_URI, contractAddress.trim()); const subscription = reader.state$.subscribe({ next: (next) => { setState(next); setBusy(false); setMessage('Registry loaded. Your serial stays in this browser.'); }, error: () => { setBusy(false); setMessage('The registry could not be read. Check the contract address and network.'); } }); window.setTimeout(() => subscription.unsubscribe(), 60_000); };
+  const match = state && serial.trim() ? state.products.find((product) => product.productCommitment === productCommitmentForSerial(serial.trim())) : undefined;
+  return <section className="public-verifier"><div><p className="kicker">PUBLIC VERIFIER</p><h2>Check a product without connecting a wallet.</h2><p>Read-only verification uses the public indexer. The serial is hashed locally and never submitted.</p></div><div className="public-verifier-fields"><input className={input} value={contractAddress} onChange={(e) => setContractAddress(e.target.value)} placeholder="Midnight contract address" /><input className={input} value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Product serial" /><button className={secondary} disabled={busy || !contractAddress.trim()} onClick={readRegistry}>{busy ? <Spinner /> : <PackageSearch className={icon} />}Read registry</button></div><p className="public-verifier-message">{message}</p>{match && <div className="public-verifier-result"><CheckCircle2 className={icon} /><span><strong>Commitment matched</strong>{match.model} · {match.category} · {STATUS[match.status].label}</span></div>}{state && serial.trim() && !match && <div className="public-verifier-result verifier-error"><BadgeX className={icon} /><span>No registered product matches that serial.</span></div>}</section>;
 }
 
 function Setup({ session, ready, toast }: { session: Session; ready: (api: TrustCartAPI) => void; toast: (kind: Toast['kind'], text: string) => void }) {
@@ -123,7 +134,7 @@ function App() {
   const toast = useCallback((kind: Toast['kind'], text: string) => { const id = Date.now() + Math.random(); setToasts((old) => [...old.slice(-3), { id, kind, text }]); window.setTimeout(() => setToasts((old) => old.filter((item) => item.id !== id)), 5000); }, []);
   const connect = async (walletId?: string) => { setBusy(true); setError(null); try { const attempt = beginWalletConnection(readInjectedWallets(), NETWORK_ID, walletId); const manager = new BrowserTrustCartManager(attempt.wallet, attempt.connectedAPI); const [summary, secretHex, receivingCode] = await Promise.all([manager.getWalletSummary(), manager.getSecretHex(), manager.getReceivingCode()]); const next = { manager, summary, secretHex, receivingCode }; setSession(next); const saved = localStorage.getItem(CONTRACT_ADDRESS_KEY); if (saved) { try { setApi(await manager.join(saved)); } catch { localStorage.removeItem(CONTRACT_ADDRESS_KEY); toast('info', 'Saved contract unavailable. Choose a contract to continue.'); } } } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   useEffect(() => { if (!api) { setState(null); return; } const sub = api.state$.subscribe({ next: setState, error: (e) => toast('err', e instanceof Error ? e.message : String(e)) }); return () => sub.unsubscribe(); }, [api, toast]);
-  if (!session) return <><ConnectScreen onConnect={(id) => void connect(id)} busy={busy} error={error} /><Toasts toasts={toasts} /></>;
+  if (!session) return <><ConnectScreen onConnect={(id) => void connect(id)} busy={busy} error={error} /><PublicVerification /><Toasts toasts={toasts} /></>;
   if (!api) return <><Setup session={session} ready={setApi} toast={toast} /><Toasts toasts={toasts} /></>;
   if (!state) return <div className="loading-page"><div className="loading-mark"><Spinner /></div><p>Reading the latest private registry state...</p></div>;
   return <><Dashboard api={api} session={session} state={state} toast={toast} /><Toasts toasts={toasts} /></>;

@@ -57,6 +57,9 @@ export const trustCartStateFromLedger = (ledger: ReturnType<typeof ContractBindi
   })).sort((a, b) => a.id - b.id),
 });
 
+export const productCommitmentForSerial = (serialNumber: string): string =>
+  bytesToHex(ContractBindings.pureCircuits.productCommitment(encodeText(serialNumber)));
+
 export class TrustCartAPI {
   readonly deployedContractAddress: ContractAddress;
   readonly state$: Observable<TrustCartDerivedState>;
@@ -89,9 +92,7 @@ export class TrustCartAPI {
   }
 
   productCommitment(serialNumber: string): string {
-    return bytesToHex(
-      ContractBindings.pureCircuits.productCommitment(encodeText(serialNumber)),
-    );
+    return productCommitmentForSerial(serialNumber);
   }
 
   ownsProduct(product: ProductView, secretHex: string): boolean {
