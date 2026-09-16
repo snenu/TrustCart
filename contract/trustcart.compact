@@ -85,6 +85,8 @@ export ledger manufacturers: Map<Uint<64>, ManufacturerRecord>;
 export ledger sellers: Map<Uint<64>, SellerRecord>;
 export ledger products: Map<Uint<64>, ProductRecord>;
 export ledger warranties: Map<Uint<64>, WarrantyRecord>;
+export ledger manufacturerCommitments: Map<Bytes<32>, Boolean>;
+export ledger sellerCommitments: Map<Bytes<32>, Boolean>;
 export ledger productCommitments: Map<Bytes<32>, Boolean>;
 export ledger nextManufacturerId: Counter;
 export ledger nextSellerId: Counter;
@@ -127,12 +129,14 @@ export circuit warrantyExpiryFor(issuedAt: Uint<64>, warrantyMonths: Uint<8>): U
 
 export circuit registerManufacturer(name: Bytes<32>, brand: Bytes<32>): [] {
   const mfrHash = mfrCommitment(localSecretKey());
+  const publicMfrHash = disclose(mfrHash);
+  assert(!manufacturerCommitments.member(publicMfrHash), "manufacturer identity is already registered");
   nextManufacturerId.increment(1);
   const id = disclose(nextManufacturerId.read() as Uint<64>);
   manufacturers.insert(id, ManufacturerRecord {
     name: disclose(name),
     brand: disclose(brand),
-    mfrHash: disclose(mfrHash),
+    mfrHash: publicMfrHash,
     productCount: 0 as Uint<64>,
     active: true
   });
@@ -182,12 +186,14 @@ export circuit registerSeller(name: Bytes<32>, mfrId: Uint<64>): [] {
   const publicMfrId = disclose(mfrId);
   assert(manufacturers.member(publicMfrId), "manufacturer not found");
   const sellerHash = sellerCommitment(localSecretKey());
+  const publicSellerHash = disclose(sellerHash);
+  assert(!sellerCommitments.member(publicSellerHash), "seller identity is already registered");
   nextSellerId.increment(1);
   const sellerId = disclose(nextSellerId.read() as Uint<64>);
   sellers.insert(sellerId, SellerRecord {
     name: disclose(name),
     mfrId: publicMfrId,
-    sellerHash: disclose(sellerHash),
+    sellerHash: publicSellerHash,
     authorized: false,
     salesCount: 0 as Uint<64>
   });
@@ -269,6 +275,7 @@ export circuit transferOwnership(productId: Uint<64>, newOwnerHash: Bytes<32>): 
     ...product,
     pendingOwnerHash: disclose(newOwnerHash)
   });
+  manufacturerCommitments.insert(publicMfrHash, true);
 }
 
 export circuit acceptOwnershipTransfer(productId: Uint<64>): [] {
