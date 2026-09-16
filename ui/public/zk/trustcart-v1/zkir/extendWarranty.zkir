@@ -191,8 +191,10 @@
     { "op": "mul", "a": 1, "b": 59 },
     { "op": "add", "a": 56, "b": 60 },
     { "op": "constrain_bits", "var": 61, "bits": 64 },
+    { "op": "less_than", "a": 56, "b": 61, "bits": 64 },
+    { "op": "assert", "cond": 62 },
     { "op": "load_imm", "imm": "70" },
-    { "op": "declare_pub_input", "var": 62 },
+    { "op": "declare_pub_input", "var": 63 },
     { "op": "declare_pub_input", "var": 2 },
     { "op": "declare_pub_input", "var": 2 },
     { "op": "declare_pub_input", "var": 52 },
@@ -204,7 +206,7 @@
     { "op": "declare_pub_input", "var": 24 },
     { "op": "pi_skip", "guard": 2, "count": 5 },
     { "op": "load_imm", "imm": "11" },
-    { "op": "declare_pub_input", "var": 63 },
+    { "op": "declare_pub_input", "var": 64 },
     { "op": "declare_pub_input", "var": 2 },
     { "op": "declare_pub_input", "var": 40 },
     { "op": "declare_pub_input", "var": 7 },
@@ -219,10 +221,10 @@
     { "op": "declare_pub_input", "var": 57 },
     { "op": "pi_skip", "guard": 2, "count": 13 },
     { "op": "load_imm", "imm": "91" },
-    { "op": "declare_pub_input", "var": 64 },
+    { "op": "declare_pub_input", "var": 65 },
     { "op": "pi_skip", "guard": 2, "count": 1 },
     { "op": "load_imm", "imm": "A1" },
-    { "op": "declare_pub_input", "var": 65 },
+    { "op": "declare_pub_input", "var": 66 },
     { "op": "pi_skip", "guard": 2, "count": 1 }
   ]
 }
