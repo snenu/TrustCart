@@ -16,6 +16,7 @@ import {
 import type { UnboundTransaction } from '@midnight-ntwrk/midnight-js-types';
 import { TrustCartAPI, type TrustCartCircuitKeys, type TrustCartProviders } from '../../api/src/index';
 import { decryptPrivacyKey, encryptPrivacyKey } from './privacy-key';
+import { loadOrCreateSecret, storeSecret } from './secure-secret-store';
 
 const NETWORK_ID = (import.meta.env.VITE_NETWORK_ID ?? 'preprod') as NetworkId;
 const PREFERRED_PROOF_SERVER = (import.meta.env.VITE_PROOF_SERVER_URL ?? '').replace(/\/$/, '');
@@ -82,11 +83,7 @@ export class BrowserTrustCartManager {
 
   private async getSecretKeyForAddress(address: string): Promise<Uint8Array> {
     const storageKey = await this.secretStorageKey(address);
-    const stored = localStorage.getItem(storageKey);
-    if (stored) return Uint8Array.from(atob(stored), (character) => character.charCodeAt(0));
-    const secret = crypto.getRandomValues(new Uint8Array(32));
-    localStorage.setItem(storageKey, btoa(String.fromCharCode(...secret)));
-    return secret;
+    return loadOrCreateSecret(storageKey);
   }
 
   private async getSecretKey(): Promise<Uint8Array> {
@@ -222,7 +219,7 @@ export class BrowserTrustCartManager {
     const normalized = backup.trim();
     if (normalized.startsWith('trustcart-key:v1:')) {
       const secret = await decryptPrivacyKey(normalized, passphrase);
-      localStorage.setItem(await this.secretStorageKey(), btoa(String.fromCharCode(...secret)));
+      await storeSecret(await this.secretStorageKey(), secret);
       return;
     }
     if (!normalized.startsWith(BACKUP_PREFIX)) throw new Error('This TrustCart backup is not valid.');
@@ -237,6 +234,6 @@ export class BrowserTrustCartManager {
     const { providers } = await this.connection();
     await providers.privateStateProvider.importPrivateStates(payload.privateStates, { password: passphrase, conflictStrategy: 'overwrite' });
     await providers.privateStateProvider.importSigningKeys(payload.signingKeys, { password: passphrase, conflictStrategy: 'overwrite' });
-    localStorage.setItem(await this.secretStorageKey(), btoa(String.fromCharCode(...secret)));
+    await storeSecret(await this.secretStorageKey(), secret);
   }
 }
