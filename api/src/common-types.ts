@@ -1,7 +1,7 @@
 import type { FoundContract } from '@midnight-ntwrk/midnight-js-contracts';
 import type { MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import type { TrustCartPrivateState } from '../../contract/src/index.js';
-import type { ProductStatus } from '../../contract/managed/trustcart/contract/index.js';
+import type { ProductStatus, Contract as TrustCartContract } from '../../contract/managed/trustcart/contract/index.js';
 
 export const trustCartPrivateStateKey = 'trustCartPrivateState';
 export type PrivateStateId = typeof trustCartPrivateStateKey;
@@ -21,7 +21,7 @@ export type TrustCartCircuitKeys =
   | 'extendWarranty';
 
 export type TrustCartProviders = MidnightProviders<TrustCartCircuitKeys, PrivateStateId, TrustCartPrivateState>;
-export type DeployedTrustCartContract = FoundContract<any>;
+export type DeployedTrustCartContract = FoundContract<TrustCartContract<TrustCartPrivateState>>;
 
 export interface ManufacturerView {
   readonly id: number;
