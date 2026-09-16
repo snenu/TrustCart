@@ -116,15 +116,16 @@ export class TrustCartAPI {
     return product.productCommitment === this.productCommitment(serialNumber);
   }
 
-  async registerManufacturer(input: RegisterManufacturerInput): Promise<void> {
-    await this.deployedContract.callTx.registerManufacturer(
+  async registerManufacturer(input: RegisterManufacturerInput): Promise<string> {
+    const tx = await this.deployedContract.callTx.registerManufacturer(
       encodeText(input.name),
       encodeText(input.brand),
     );
+    return tx.public.txId;
   }
 
-  async registerProduct(input: RegisterProductInput): Promise<void> {
-    await this.deployedContract.callTx.registerProduct(
+  async registerProduct(input: RegisterProductInput): Promise<string> {
+    const tx = await this.deployedContract.callTx.registerProduct(
       BigInt(input.mfrId),
       encodeText(input.model),
       encodeCategory(input.category),
@@ -132,57 +133,68 @@ export class TrustCartAPI {
       BigInt(input.warrantyMonths),
       encodeText(input.serialNumber),
     );
+    return tx.public.txId;
   }
 
-  async registerSeller(input: RegisterSellerInput): Promise<void> {
-    await this.deployedContract.callTx.registerSeller(
+  async registerSeller(input: RegisterSellerInput): Promise<string> {
+    const tx = await this.deployedContract.callTx.registerSeller(
       encodeText(input.name),
       BigInt(input.mfrId),
     );
+    return tx.public.txId;
   }
 
-  async authorizeSeller(mfrId: number, sellerId: number): Promise<void> {
-    await this.deployedContract.callTx.authorizeSeller(BigInt(mfrId), BigInt(sellerId));
+  async authorizeSeller(mfrId: number, sellerId: number): Promise<string> {
+    const tx = await this.deployedContract.callTx.authorizeSeller(BigInt(mfrId), BigInt(sellerId));
+    return tx.public.txId;
   }
 
-  async revokeSellerAuthorization(mfrId: number, sellerId: number): Promise<void> {
-    await this.deployedContract.callTx.revokeSellerAuthorization(BigInt(mfrId), BigInt(sellerId));
+  async revokeSellerAuthorization(mfrId: number, sellerId: number): Promise<string> {
+    const tx = await this.deployedContract.callTx.revokeSellerAuthorization(BigInt(mfrId), BigInt(sellerId));
+    return tx.public.txId;
   }
 
-  async registerSale(input: RegisterSaleInput): Promise<void> {
-    await this.deployedContract.callTx.registerSale(
+  async registerSale(input: RegisterSaleInput): Promise<string> {
+    const tx = await this.deployedContract.callTx.registerSale(
       BigInt(input.sellerId),
       BigInt(input.productId),
       hexToBytes(input.buyerReceivingCode),
       input.saleDate,
     );
+    return tx.public.txId;
   }
 
-  async transferOwnership(productId: number, newOwnerReceivingCode: string): Promise<void> {
-    await this.deployedContract.callTx.transferOwnership(
+  async transferOwnership(productId: number, newOwnerReceivingCode: string): Promise<string> {
+    const tx = await this.deployedContract.callTx.transferOwnership(
       BigInt(productId),
       hexToBytes(newOwnerReceivingCode),
     );
+    return tx.public.txId;
   }
 
-  async acceptOwnershipTransfer(productId: number): Promise<void> {
-    await this.deployedContract.callTx.acceptOwnershipTransfer(BigInt(productId));
+  async acceptOwnershipTransfer(productId: number): Promise<string> {
+    const tx = await this.deployedContract.callTx.acceptOwnershipTransfer(BigInt(productId));
+    return tx.public.txId;
   }
 
-  async cancelOwnershipTransfer(productId: number): Promise<void> {
-    await this.deployedContract.callTx.cancelOwnershipTransfer(BigInt(productId));
+  async cancelOwnershipTransfer(productId: number): Promise<string> {
+    const tx = await this.deployedContract.callTx.cancelOwnershipTransfer(BigInt(productId));
+    return tx.public.txId;
   }
 
-  async setProductStatus(productId: number, status: ContractBindings.ProductStatus): Promise<void> {
-    await this.deployedContract.callTx.setProductStatus(BigInt(productId), status);
+  async setProductStatus(productId: number, status: ContractBindings.ProductStatus): Promise<string> {
+    const tx = await this.deployedContract.callTx.setProductStatus(BigInt(productId), status);
+    return tx.public.txId;
   }
 
-  async cancelWarranty(productId: number): Promise<void> {
-    await this.deployedContract.callTx.cancelWarranty(BigInt(productId));
+  async cancelWarranty(productId: number): Promise<string> {
+    const tx = await this.deployedContract.callTx.cancelWarranty(BigInt(productId));
+    return tx.public.txId;
   }
 
-  async extendWarranty(productId: number, extraMonths: number): Promise<void> {
-    await this.deployedContract.callTx.extendWarranty(BigInt(productId), BigInt(extraMonths));
+  async extendWarranty(productId: number, extraMonths: number): Promise<string> {
+    const tx = await this.deployedContract.callTx.extendWarranty(BigInt(productId), BigInt(extraMonths));
+    return tx.public.txId;
   }
 
   static async deploy(providers: TrustCartProviders, secretKey: Uint8Array): Promise<TrustCartAPI> {
