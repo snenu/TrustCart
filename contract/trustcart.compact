@@ -197,6 +197,7 @@ export circuit registerSeller(name: Bytes<32>, mfrId: Uint<64>): [] {
     authorized: false,
     salesCount: 0 as Uint<64>
   });
+  sellerCommitments.insert(publicSellerHash, true);
 }
 export circuit authorizeSeller(mfrId: Uint<64>, sellerId: Uint<64>): [] {
   const publicMfrId = disclose(mfrId);
