@@ -187,7 +187,7 @@ export class TrustCartAPI {
 
   static async deploy(providers: TrustCartProviders, secretKey: Uint8Array): Promise<TrustCartAPI> {
     const privateState = createTrustCartPrivateState(secretKey);
-    const deployed = await deployContract(providers as any, {
+    const deployed = await deployContract(providers, {
       compiledContract: CompiledTrustCartContract,
       privateStateId: trustCartPrivateStateKey,
       initialPrivateState: privateState,
@@ -201,7 +201,7 @@ export class TrustCartAPI {
     secretKey: Uint8Array,
   ): Promise<TrustCartAPI> {
     const privateState = createTrustCartPrivateState(secretKey);
-    const deployed = await findDeployedContract(providers as any, {
+    const deployed = await findDeployedContract(providers, {
       contractAddress,
       compiledContract: CompiledTrustCartContract,
       privateStateId: trustCartPrivateStateKey,
