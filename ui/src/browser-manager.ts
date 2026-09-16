@@ -4,6 +4,7 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { type NetworkId, setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { validatePassword } from '@midnight-ntwrk/midnight-js-utils';
 import { fromHex, toHex, type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import {
   Binding,
@@ -94,8 +95,12 @@ export class BrowserTrustCartManager {
     const key = `trustcart:private-storage-password:v1:${toHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(address))))}`;
     const existing = localStorage.getItem(key);
     if (existing) return existing;
-    const random = crypto.getRandomValues(new Uint8Array(32));
-    const password = `TrustCart!${btoa(String.fromCharCode(...random))}#Store`;
+    let password = '';
+    do {
+      const random = crypto.getRandomValues(new Uint8Array(32));
+      password = `TrustCart!${btoa(String.fromCharCode(...random))}#Store`;
+      try { validatePassword(password); } catch { password = ''; }
+    } while (!password);
     localStorage.setItem(key, password);
     return password;
   }

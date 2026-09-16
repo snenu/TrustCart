@@ -1,4 +1,5 @@
 type StoredSecret = { iv: ArrayBuffer; ciphertext: ArrayBuffer };
+const asArrayBuffer = (value: Uint8Array): ArrayBuffer => value.slice().buffer as ArrayBuffer;
 
 const DATABASE = 'trustcart-secure-storage';
 const STORE = 'secrets';
@@ -46,7 +47,7 @@ export const writeSecret = async (storageKey: string, secret: Uint8Array): Promi
   const db = await openDatabase();
   const key = await getDeviceKey(db);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, secret);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(secret));
   await writeRecord(db, storageKey, { iv: iv.buffer, ciphertext });
 };
 
