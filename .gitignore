@@ -1,6 +1,5 @@
 node_modules/
 dist/
-managed/
 .vite/
 *.log
 .DS_Store
@@ -8,3 +7,13 @@ managed/
 .env.*.local
 
 .vercel
+
+# Compiled contract outputs. Only the small runtime bindings under the
+# contract/ directory are committed so fresh clones (and hosted builds like
+# Vercel) can import the contract without a local `compact compile`.
+# The heavyweight keys/zkir/compiler outputs are regenerated locally and are
+# already committed where the app serves them (ui/public/zk/trustcart-v1).
+contract/managed/*
+!contract/managed/trustcart
+contract/managed/trustcart/*
+!contract/managed/trustcart/contract
