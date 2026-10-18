@@ -18,6 +18,9 @@ It gives manufacturers, sellers, and buyers a shared product registry without tu
 - Keeps encrypted private state and signing keys in the browser.
 - Exports and restores an encrypted recovery backup.
 - Automatically connects users to the deployed TrustCart Preprod registry after wallet connection.
+- Shows registry sync status, links every transaction to the explorer, and lets owners cancel pending transfers from the app.
+
+See [ROADMAP.md](ROADMAP.md) for the shipped waves and what is planned next.
 
 ## Live Preprod deployment
 
@@ -40,7 +43,7 @@ The contract address is public configuration, not a secret. The UI includes this
 ## Architecture
 
 ```text
-contract/  Compact contract, witnesses, generated bindings, and contract tests
+contract/  Compact contract, witnesses, committed compiled bindings, and contract tests
 api/       Typed contract API, validation, provider types, and public reader
 ui/        React + Vite dapp, wallet connection, private state, and landing page
 scripts/   Contract compilation and ZK artifact preparation
@@ -113,7 +116,7 @@ The test suite covers the Compact contract and UI helpers. The build emits the c
 
 ## Deploy to Vercel
 
-The repository includes `vercel.json` for the Vite workspace app. It builds `ui/dist` and rewrites client-side routes to `index.html`.
+The repository includes `vercel.json` for the Vite workspace app. It builds `ui/dist` and rewrites client-side routes to `index.html`. Fresh clones and hosted builds work out of the box: the compiled contract bindings and the ZK artifacts are committed, so no local `compact compile` is needed on the build server.
 
 Using the Vercel CLI:
 
